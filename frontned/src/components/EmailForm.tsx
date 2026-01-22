@@ -1,22 +1,36 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Mail, Plus, Users, AlertCircle, Loader2 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Mail, Plus, Users, AlertCircle, Loader2, Calendar, Shield } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getEmails, addEmail } from "./api";
-
-
-
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface EmailData {
   _id: string;
-  email: string;
+  tempEmail: string;
+  primaryEmail: string;
+  alertDate: string;
   createdAt: string;
 }
 
 const EmailForm = () => {
-  const [inputValue, setInputValue] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    tempEmail: "",
+    primaryEmail: "",
+    alertDate: "",
+  });
   const [validationError, setValidationError] = useState("");
   const queryClient = useQueryClient();
 
@@ -29,12 +43,13 @@ const EmailForm = () => {
     mutationFn: addEmail,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["emails"] });
-      setInputValue("");
+      setFormData({ tempEmail: "", primaryEmail: "", alertDate: "" });
       setValidationError("");
-      toast.success("Email tracking started!");
+      setIsOpen(false);
+      toast.success("Email alert scheduled!");
     },
     onError: (error: any) => {
-      const msg = error.response?.data?.message || "Failed to add email";
+      const msg = error.response?.data?.message || "Failed to schedule alert";
       setValidationError(msg);
       toast.error(msg);
     },
@@ -45,13 +60,29 @@ const EmailForm = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError("");
-    const trimmedEmail = inputValue.trim().toLowerCase();
 
-    if (!trimmedEmail) return setValidationError("Email is required");
-    if (!validateEmail(trimmedEmail)) return setValidationError("Invalid email address");
-    if (emails.some((e: EmailData) => e.email === trimmedEmail)) return setValidationError("Email already being tracked");
+    if (!formData.tempEmail || !formData.primaryEmail || !formData.alertDate) {
+      return setValidationError("All fields are required");
+    }
 
-    addEmailMutation.mutate(trimmedEmail);
+    if (!validateEmail(formData.tempEmail)) {
+      return setValidationError("Invalid temporary email");
+    }
+
+    if (!validateEmail(formData.primaryEmail)) {
+      return setValidationError("Invalid primary email");
+    }
+
+    const selectedDate = new Date(formData.alertDate);
+    if (selectedDate <= new Date()) {
+      return setValidationError("Alert date must be in the future");
+    }
+
+    addEmailMutation.mutate({
+      tempEmail: formData.tempEmail.trim().toLowerCase(),
+      primaryEmail: formData.primaryEmail.trim().toLowerCase(),
+      alertDate: formData.alertDate,
+    });
   };
 
   const isSubmitting = addEmailMutation.isPending;
@@ -76,72 +107,115 @@ const EmailForm = () => {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 group">
-            <Input
-              type="email"
-              placeholder="name@example.com"
-              value={inputValue}
-              onChange={(e) => {
-                setInputValue(e.target.value);
-                setValidationError("");
-              }}
-              disabled={isSubmitting || isLoadingEmails}
-              className="h-12 px-4 rounded-xl border-2 border-primary/10 bg-white/50 dark:bg-black/20 focus:border-primary/50 focus:ring-0 transition-all duration-300 placeholder:text-muted-foreground/50"
-            />
-          </div>
-          <Button
-            type="submit"
-            disabled={isSubmitting || isLoadingEmails}
-            className="h-12 px-8 rounded-xl bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all duration-300 active:scale-95 whitespace-nowrap"
-          >
-            {isSubmitting ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Plus className="w-5 h-5 mr-2" />
-                Start Tracking
-              </>
-            )}
-          </Button>
-        </div>
+      <div className="flex justify-center">
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogTrigger asChild>
+            <Button className="h-14 px-10 rounded-2xl bg-primary hover:bg-primary/90 text-white shadow-xl shadow-primary/25 transition-all duration-300 hover:scale-105 active:scale-95 group">
+              <Plus className="w-6 h-6 mr-2 transition-transform group-hover:rotate-90" />
+              <span className="text-lg font-bold">Add Email Alert</span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px] rounded-3xl border-white/20 bg-background/95 backdrop-blur-xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Schedule New Alert</DialogTitle>
+              <DialogDescription className="text-muted-foreground font-medium">
+                Enter emails and the date you want the revocation alert to be sent.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tempEmail" className="text-sm font-bold ml-1">Temporary Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="tempEmail"
+                      type="email"
+                      placeholder="temp@example.com"
+                      className="pl-10 h-12 rounded-xl focus:ring-primary/20"
+                      value={formData.tempEmail}
+                      onChange={(e) => setFormData({ ...formData, tempEmail: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="primaryEmail" className="text-sm font-bold ml-1">Primary Email</Label>
+                  <div className="relative">
+                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="primaryEmail"
+                      type="email"
+                      placeholder="primary@example.com"
+                      className="pl-10 h-12 rounded-xl focus:ring-primary/20"
+                      value={formData.primaryEmail}
+                      onChange={(e) => setFormData({ ...formData, primaryEmail: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="alertDate" className="text-sm font-bold ml-1">Alert Date & Time</Label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="alertDate"
+                      type="datetime-local"
+                      className="pl-10 h-12 rounded-xl focus:ring-primary/20"
+                      value={formData.alertDate}
+                      onChange={(e) => setFormData({ ...formData, alertDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
 
-        {validationError && (
-          <div className="flex items-center gap-2 text-destructive text-sm font-semibold px-2 animate-in slide-in-from-top-1">
-            <AlertCircle className="w-4 h-4" />
-            {validationError}
-          </div>
-        )}
-      </form>
+              {validationError && (
+                <div className="flex items-center gap-2 text-destructive text-sm font-bold px-1 animate-in slide-in-from-top-1">
+                  <AlertCircle className="w-4 h-4" />
+                  {validationError}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold transition-all duration-300"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    "Schedule Alert"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2 text-sm font-bold text-foreground/80 lowercase tracking-wider">
             <Users className="w-4 h-4 text-primary" />
-            <span>Active Subscriptions</span>
+            <span>Active Alerts</span>
           </div>
-          <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold">
-            {emails.length} Total
+          <span className="text-xs px-3 py-1 rounded-full bg-primary/10 text-primary font-bold border border-primary/20">
+            {emails.length} Scheduled
           </span>
         </div>
 
         {isLoadingEmails ? (
           <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground font-medium animate-pulse">Fetching your emails...</p>
+            <p className="text-sm text-muted-foreground font-medium animate-pulse">Fetching alerts...</p>
           </div>
         ) : emails.length > 0 ? (
           <div className="grid gap-3">
             {emails.map((emailObj: EmailData, index: number) => {
-              const createdDate = new Date(emailObj.createdAt);
-              const targetDate = new Date(createdDate);
-              targetDate.setDate(targetDate.getDate() + 30);
-
+              const targetDate = new Date(emailObj.alertDate);
               const now = new Date();
               const diffTime = targetDate.getTime() - now.getTime();
               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-              const isExpired = diffDays <= 0;
+              const isToday = targetDate.toDateString() === now.toDateString();
 
               return (
                 <div
@@ -154,24 +228,23 @@ const EmailForm = () => {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-[15px] font-bold text-foreground truncate">{emailObj.email}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${isExpired ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`} />
-                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight">
-                        {isExpired ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">Alert Delivered</span>
-                        ) : (
-                          <>Alert in <span className="text-amber-600 dark:text-amber-400 font-black">{diffDays}d</span> • {targetDate.toLocaleDateString()}</>
-                        )}
+                    <p className="text-[15px] font-bold text-foreground truncate">{emailObj.tempEmail}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-amber-500' : 'bg-primary'} animate-pulse`} />
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-tight truncate">
+                        Alert to: <span className="text-foreground/70">{emailObj.primaryEmail}</span>
                       </p>
                     </div>
                   </div>
 
-                  {!isExpired && (
-                    <div className="hidden sm:block text-[10px] font-bold bg-muted px-2 py-1 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                      {targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  )}
+                  <div className="text-right">
+                    <p className="text-[11px] font-black text-primary uppercase tracking-wider">
+                      {isToday ? "Today" : `${diffDays}d left`}
+                    </p>
+                    <p className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                      {targetDate.toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
               );
             })}
@@ -182,8 +255,8 @@ const EmailForm = () => {
               <Mail className="w-8 h-8 text-primary/40" />
             </div>
             <div className="max-w-[200px]">
-              <p className="text-sm font-bold text-foreground">List is empty</p>
-              <p className="text-xs text-muted-foreground">Start by adding an email above to track its status.</p>
+              <p className="text-sm font-bold text-foreground">No alerts scheduled</p>
+              <p className="text-xs text-muted-foreground">Click the button above to schedule your first revocation alert.</p>
             </div>
           </div>
         )}
