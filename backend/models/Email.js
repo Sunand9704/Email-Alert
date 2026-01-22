@@ -1,18 +1,21 @@
 const mongoose = require('mongoose');
 
 const emailSchema = new mongoose.Schema({
-    email: {
+    tempEmail: {
         type: String,
         required: true,
-        unique: true,
+    },
+    primaryEmail: {
+        type: String,
+        required: true,
+    },
+    alertDate: {
+        type: Date,
+        required: true,
     },
     createdAt: {
         type: Date,
         default: Date.now,
-    },
-    status: {
-        type: String,
-        default: 'UNSEEN', // UNSEEN, SEEN
     },
     notificationSent: {
         type: Boolean,
